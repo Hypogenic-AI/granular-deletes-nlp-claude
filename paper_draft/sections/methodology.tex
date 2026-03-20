@@ -1,0 +1,63 @@
+\section{Methodology}
+\label{sec:methodology}
+
+We describe our experimental setup, including the model, dataset, and four complementary analyses that together characterize information flow and geometry in the \residstream.
+
+\subsection{Model and Dataset}
+\label{sec:model_data}
+
+\para{Model.} We use \gptmed (24 transformer layers, $\dmodel = 1024$, 355M parameters), accessed via TransformerLens~\citep{nanda2022transformerlens} for full activation caching and hook-based interventions.
+
+\para{Dataset.} We draw from \counterfact~\citep{meng2022locating}, a benchmark of 19,728 factual triples $(s, r, o)$ with natural language prompts (\eg ``The mother tongue of Danielle Darrieux is'' $\to$ ``French''). We filter to facts with single-token targets for clean logit lens analysis, yielding 600 candidates. We rank these by \gptmed's recall probability $P(o \mid s, r)$ and select the top 200. The selected facts have mean probability 0.28\%, with 6 facts (3\%) appearing in the model's top-10 predictions and 8 (4\%) in the top-100.
+
+\subsection{Experiment 1: Logit Lens Profiling}
+\label{sec:exp1}
+
+For each of the 200 facts, we cache all \residstream activations $\vh^{(\ell)}$ at the last token position across all 24 layers. At each layer $\ell$, we apply the logit lens by projecting through the unembedding matrix $\mW_U$:
+\begin{equation}
+    \text{logits}^{(\ell)} = \mW_U \cdot \text{LayerNorm}(\vh^{(\ell)}),
+    \label{eq:logit_lens}
+\end{equation}
+and compute $P^{(\ell)}(o) = \softmax(\text{logits}^{(\ell)})_o$, the probability assigned to the correct target token $o$ at layer $\ell$. We track four metrics: $P^{(\ell)}(o)$, $\log P^{(\ell)}(o)$, the rank of $o$ in the vocabulary, and the per-component (MLP vs.\ attention) contribution to the target logit.
+
+The \newterm{enrichment score} at layer $\ell$ is defined as $\Delta P^{(\ell)} = P^{(\ell)}(o) - P^{(\ell-1)}(o)$, measuring the single-layer change in target probability.
+
+\subsection{Experiment 2: Component Ablation}
+\label{sec:exp2}
+
+For each layer $\ell \in \{0, \ldots, 23\}$, we zero-ablate either the MLP output or the attention output and measure the change in final-layer target probability:
+\begin{equation}
+    \Delta P_{\text{MLP}}^{(\ell)} = P^{(L)}(o) - P^{(L)}(o \mid \text{MLP}^{(\ell)} = \vzero),
+    \label{eq:ablation}
+\end{equation}
+where $L = 23$ is the final layer. Positive $\Delta P$ indicates that the ablated component contributes positively to factual recall; negative $\Delta P$ indicates a suppressive role.
+
+\subsection{Experiment 3: Directional Deletion}
+\label{sec:exp3}
+
+We identify the mean \newterm{fact direction} $\vd^{(\ell)}$ in MLP output space at each critical layer:
+\begin{equation}
+    \vd^{(\ell)} = \frac{1}{N} \sum_{i=1}^{N} \text{MLP}^{(\ell)}(\vx_i),
+    \label{eq:fact_direction}
+\end{equation}
+where the sum is over the $N = 200$ factual prompts. We then project out this direction from the MLP output during a forward pass:
+\begin{equation}
+    \widetilde{\text{MLP}}^{(\ell)}(\vx) = \text{MLP}^{(\ell)}(\vx) - \frac{\langle \text{MLP}^{(\ell)}(\vx), \hat{\vd}^{(\ell)} \rangle}{\|\hat{\vd}^{(\ell)}\|^2} \hat{\vd}^{(\ell)},
+    \label{eq:projection}
+\end{equation}
+where $\hat{\vd}^{(\ell)} = \vd^{(\ell)} / \|\vd^{(\ell)}\|$. We compare three deletion strategies: \emph{single-layer} (layer 0 only), \emph{top-2} (layers 0 and 3), and \emph{all-critical} (layers 0, 3, and 6), selected based on the ablation results from \secref{sec:exp2}.
+
+For each strategy, we re-run the logit lens and measure the reduction in target probability. We report Cohen's $d$ effect sizes and paired $t$-test $p$-values.
+
+\subsection{Experiment 4: Geometric Analysis}
+\label{sec:exp4}
+
+We characterize the geometry of the \residstream at layers $\{0, 6, 12, 18, 23\}$ via three analyses:
+
+\para{PCA.} We compute the principal components of $\{\vh^{(\ell)}_i\}_{i=1}^{N}$ and report the fraction of variance explained by the top components.
+
+\para{Cross-layer similarity.} We compute the mean cosine similarity between activations at different layers: $\text{sim}(\ell, \ell') = \frac{1}{N} \sum_i \cos(\vh^{(\ell)}_i, \vh^{(\ell')}_i)$.
+
+\para{Norm evolution.} We track $\frac{1}{N}\sum_i \|\vh^{(\ell)}_i\|_2$ across layers to characterize how the \residstream grows in magnitude.
+
+For the deletion experiments, we additionally compute the cosine similarity and $L_2$ distance between pre- and post-deletion activations at each analysis layer, measuring how deletion reshapes the geometric landscape.

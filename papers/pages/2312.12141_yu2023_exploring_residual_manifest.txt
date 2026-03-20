@@ -1,0 +1,10 @@
+PDF: papers/2312.12141_yu2023_exploring_residual.pdf
+Total pages: 14
+Pages per chunk: 3
+
+Chunks:
+  2312.12141_yu2023_exploring_residual_chunk_001.pdf: pages 1-3
+  2312.12141_yu2023_exploring_residual_chunk_002.pdf: pages 4-6
+  2312.12141_yu2023_exploring_residual_chunk_003.pdf: pages 7-9
+  2312.12141_yu2023_exploring_residual_chunk_004.pdf: pages 10-12
+  2312.12141_yu2023_exploring_residual_chunk_005.pdf: pages 13-14

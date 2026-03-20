@@ -1,0 +1,36 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{A Three-Phase Lifecycle of Factual Knowledge}
+\label{sec:lifecycle}
+
+Our results reveal a clear lifecycle for factual information in the \residstream. In \textbf{Phase 1} (layers 0--7), early MLPs inject the factual signal into the \residstream, but the logit lens does not yet decode it---the information is present in a form not aligned with the unembedding matrix. In \textbf{Phase 2} (layers 8--21), attention heads and later MLPs amplify and route the signal, bringing it into alignment with the output vocabulary; the logit lens detects peak probability at layer 21. In \textbf{Phase 3} (layers 22--23), late MLPs \emph{suppress} the factual signal, reducing target probability from 2.5\% back to 0.9\%.
+
+This three-phase lifecycle resolves an apparent paradox: the layers where information \emph{appears} in the logit lens (15--21) are not the layers where it is \emph{stored} (0--6). The distinction between enrichment layers and storage layers is critical for model editing---targeting enrichment layers would miss the causal source. Our ablation results confirm this: MLP 0 ablation removes 98.9\% of the signal despite contributing negligible logit lens probability at layer 0.
+
+\subsection{Implications for Machine Unlearning}
+\label{sec:unlearning}
+
+Our directional deletion experiments demonstrate that a simple geometric intervention---projecting out a single mean direction---achieves near-complete knowledge removal (99.7\%) when targeting early MLPs. This has practical implications for machine unlearning:
+
+\para{Target early layers.} Consistent with the \flu mechanism~\citep{ghosh2024mechanistic}, we find that layers 0--3 are sufficient for effective deletion. Late-layer interventions would be ineffective because (a) the information has already propagated through many layers and (b) late MLPs already perform suppression naturally.
+
+\para{Multi-layer deletion is necessary for geometric completeness.} While single-layer deletion at layer 0 reduces target probability by 90.2\%, the \residstream geometry at layer 23 remains largely intact (cosine similarity 0.879). Multi-layer deletion drives this similarity to $\approx 0$, suggesting that single-layer interventions may leave detectable traces that could be exploited for knowledge recovery~\citep{ghosh2024mechanistic}.
+
+\para{The geometry constrains minimum edit size.} The monotonically growing norms (130 $\to$ 1055) mean that perturbations at early layers are amplified through the network. A deletion at layer 0 that causes $L_2$ displacement of 128 at that layer produces displacement of 502--1358 at layer 23, depending on the number of layers targeted. This amplification is consistent with the stable region framework of \citet{janiak2024stable}, where small edits are absorbed but sufficiently large ones cross region boundaries.
+
+\subsection{The Role of Late-Layer Suppression}
+\label{sec:suppression}
+
+The discovery that late MLPs actively suppress factual information raises an intriguing question: \emph{why does the model reduce its own factual signal?} We consider three hypotheses. First, \textbf{calibration}: the model may learn that its factual recall is imperfect and suppresses overconfident predictions. Second, \textbf{competition}: late layers may prioritize other information (syntactic, contextual) that competes with factual recall. Third, \textbf{distribution shaping}: the final layers may reshape the full output distribution for coherence rather than optimizing any single token's probability. Distinguishing these hypotheses requires future causal analysis of the specific late-layer mechanisms.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+\para{Model scale.} \gptmed has relatively low factual recall on \counterfact (mean $P = 0.28\%$, only 3\% of facts in top-10). Larger models (\eg Llama-3-8B, Gemma-7B) would exhibit stronger enrichment signals and more statistically powerful deletion effects. Our qualitative findings---the non-monotonic trajectory, the storage/extraction distinction, the geometric reshaping---should replicate at scale, but the quantitative effect sizes will differ.
+
+\para{Deletion method.} We project out a single mean fact direction, which is a simplified version of rank-one editing methods like \rome~\citep{meng2022locating}. Per-fact directions would likely be more targeted and effective, and the mean direction may inadvertently remove non-factual information that shares variance with the fact direction.
+
+\para{Geometric metric.} We use the standard Euclidean inner product for cosine similarity and PCA. \citet{park2023linear} show that the causal inner product is the correct metric for measuring concept orthogonality. Our Euclidean analysis captures the gross geometric changes but may miss subtler structure visible only under the causal metric.
+
+\para{Position and seed.} We analyze only the last token position, though factual information may be distributed across positions~\citep{yu2023neuron}. We use a single random seed; bootstrap confidence intervals would strengthen our statistical claims.

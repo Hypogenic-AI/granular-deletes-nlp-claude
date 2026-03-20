@@ -1,0 +1,9 @@
+{
+  "seed": 42,
+  "device": "cuda:0",
+  "model": "gpt2-medium",
+  "n_layers": 24,
+  "d_model": 1024,
+  "n_facts": 200,
+  "gpu": "NVIDIA RTX A6000"
+}

@@ -1,0 +1,9 @@
+{
+  "seed": 42,
+  "device": "cuda:0",
+  "model": "gpt2",
+  "n_layers": 12,
+  "d_model": 768,
+  "n_facts": 200,
+  "batch_size": 32
+}

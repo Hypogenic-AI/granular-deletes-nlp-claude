@@ -1,0 +1,18 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Language models store vast amounts of factual knowledge in their parameters, yet we lack a clear picture of \emph{where} individual facts reside across layers and \emph{what happens} to the surrounding geometry when a fact is removed. This question is not merely academic: machine unlearning for privacy compliance, model editing for factual correction, and safety-motivated knowledge removal all require precise understanding of the spatial and temporal structure of knowledge inside transformers.
+
+\para{The gap.} Prior work has studied logit lens decoding~\citep{nostalgebraist2020logitlens, belrose2023tuned}, \residstream geometry~\citep{park2023linear, shai2024belief}, and knowledge deletion~\citep{ghosh2024mechanistic, li2026layer} as largely separate problems. No existing analysis tracks how logit lens signals change layer-by-layer during targeted deletion while simultaneously characterizing the geometric consequences in the \residstream. This leaves a disconnect: we know \emph{that} facts can be localized, but not how deletion at the storage site propagates through the full geometric landscape of the model.
+
+\para{Our approach.} We use the logit lens---projecting intermediate \residstream activations through the unembedding matrix---to build a complete layer-by-layer profile of where factual information appears, peaks, and declines in \gptmed (\figref{fig:logit_lens}). We then perform systematic MLP and attention ablation, directional deletion via mean fact projections, and PCA-based geometric analysis to answer three questions: (1)~Where does factual information enter and exit the \residstream? (2)~Which components store versus extract knowledge? (3)~How does targeted deletion reshape the \residstream geometry?
+
+\para{Key findings.} We discover that factual recall follows a non-monotonic trajectory, peaking at layer 21 before being actively suppressed in the final layers. Early MLPs (layers 0--6) are the critical storage site, consistent with the Fact Lookup mechanism~\citep{ghosh2024mechanistic}. Projecting out a single fact direction at layers 0--3 achieves 99.7\% recall reduction, and this intervention pushes final-layer activations into a completely uncorrelated region of the \residstream (cosine similarity $\approx 0$).
+
+Our contributions are:
+\begin{itemize}[leftmargin=*,itemsep=0pt,topsep=0pt]
+    \item We provide the first unified analysis connecting logit lens information trajectories with \residstream geometry before and after targeted knowledge deletion.
+    \item We show that factual information is \emph{actively suppressed} in the final 2--3 layers---the logit lens reveals ``natural deletion'' as part of the model's computation.
+    \item We demonstrate that projecting out a single mean fact direction from early MLP outputs removes 99.7\% of factual signal and fundamentally reshapes the \residstream geometry, with cosine similarity dropping to $\approx 0$ at the output layer.
+    \item We characterize the geometric structure of the \residstream, finding a dominant principal component (63--91\% variance) and monotonically growing norms (130$\to$1055) that constrain the effective reach of perturbations.
+\end{itemize}

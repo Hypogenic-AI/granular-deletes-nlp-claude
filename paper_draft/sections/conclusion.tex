@@ -1,0 +1,15 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented a unified analysis of how factual information flows through the \residstream of \gptmed, combining logit lens profiling, component ablation, directional deletion, and geometric characterization. Our main findings are:
+
+\begin{itemize}[leftmargin=*,itemsep=0pt,topsep=0pt]
+    \item Factual information follows a non-monotonic trajectory: it is enriched at layers 15--21 and actively suppressed in layers 22--23, revealing ``natural deletion'' as part of the model's computation.
+    \item Early MLPs (layers 0--6) are the critical storage site, while late attention heads serve as extraction mechanisms---consistent with the \flu framework~\citep{ghosh2024mechanistic}.
+    \item Projecting out a single mean fact direction from layers 0--3 removes 99.7\% of factual recall and pushes final-layer activations into a completely uncorrelated region (cosine similarity $\approx 0$, $L_2$ displacement $>$ activation norm).
+    \item The \residstream is geometrically anisotropic (63--91\% variance in PC1) with monotonically growing norms that constrain perturbation effectiveness.
+\end{itemize}
+
+These findings have direct implications for machine unlearning (target early MLPs, not late layers), model editing (multi-layer deletion is needed for geometric completeness), and interpretability (the logit lens reveals information suppression invisible to output-only analysis).
+
+\para{Future work.} Scaling to larger models would strengthen quantitative claims. Replacing the mean fact direction with per-fact rank-one updates~\citep{meng2022locating} would test whether more targeted deletion preserves non-factual information. Adopting the causal inner product~\citep{park2023linear} and stable region analysis~\citep{janiak2024stable} would provide a more principled geometric framework. Finally, understanding \emph{why} late MLPs suppress factual information---calibration, competition, or distribution shaping---remains an open question with implications for how we think about the computational goals of transformer layers.

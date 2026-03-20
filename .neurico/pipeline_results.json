@@ -1,0 +1,27 @@
+{
+  "success": true,
+  "stages": {
+    "resource_finder": {
+      "success": true,
+      "completion_marker": "/workspaces/granular-deletes-nlp-claude/.resource_finder_complete",
+      "outputs": {
+        "literature_review": "/workspaces/granular-deletes-nlp-claude/literature_review.md",
+        "resources_catalog": "/workspaces/granular-deletes-nlp-claude/resources.md",
+        "papers_dir": "/workspaces/granular-deletes-nlp-claude/papers",
+        "datasets_dir": "/workspaces/granular-deletes-nlp-claude/datasets",
+        "code_dir": "/workspaces/granular-deletes-nlp-claude/code"
+      },
+      "log_file": "/workspaces/granular-deletes-nlp-claude/logs/resource_finder_claude.log",
+      "transcript_file": "/workspaces/granular-deletes-nlp-claude/logs/resource_finder_claude_transcript.jsonl",
+      "elapsed_time": 920.887993812561
+    },
+    "experiment_runner": {
+      "success": true,
+      "return_code": 0,
+      "elapsed_time": 861.1117253303528,
+      "log_file": "/workspaces/granular-deletes-nlp-claude/logs/execution_claude.log",
+      "transcript_file": "/workspaces/granular-deletes-nlp-claude/logs/execution_claude_transcript.jsonl"
+    }
+  },
+  "work_dir": "/workspaces/granular-deletes-nlp-claude"
+}

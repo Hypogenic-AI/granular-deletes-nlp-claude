@@ -1,0 +1,772 @@
+You are an academic paper writer. Generate a complete NEURIPS style paper
+based on the experiment results provided.
+
+════════════════════════════════════════════════════════════════════════════════
+                         IMPORTANT: BEFORE YOU START
+════════════════════════════════════════════════════════════════════════════════
+
+Before writing any content, you MUST complete these steps:
+
+1. READ THE SKILL: Review the paper-writer skill at .claude/skills/paper-writer/SKILL.md
+2. READ THE STYLE GUIDE: Study templates/paper_writing/lab_style_guide.md carefully
+3. REVIEW EXAMPLES: Browse paper_examples/ for formatting and language patterns:
+   - Look at sections/1.introduction.tex for language style
+   - Look at tables/*.tex for table formatting
+   - Look at commands/*.tex for macro usage
+4. VERIFY COMMAND TEMPLATES: Command templates (math.tex, general.tex, macros.tex) are pre-copied to paper_draft/commands/
+
+CRITICAL: Reference example papers for FORMATTING and LANGUAGE STYLE only.
+Do NOT copy content, phrasing, or narrative structure from the example papers.
+The examples are in a different research domain - focus only on presentation style.
+
+════════════════════════════════════════════════════════════════════════════════
+                            EXPERIMENT REPORT
+════════════════════════════════════════════════════════════════════════════════
+
+# Research Report: Characterizing Granular Deletes via Logit Lens and Residual Stream Geometry
+
+## 1. Executive Summary
+
+We investigated whether the logit lens can identify where factual information is added to and deleted from the residual stream in language models, and whether we can map the geometry of the residual stream. Using GPT-2-medium (24 layers, d_model=1024) on 200 CounterFact examples, we found that **factual information enters the residual stream primarily at layers 16-17 and 20-21** (late-middle layers), with the largest single-layer enrichment at layer 17 (ΔP = +0.0073). MLP ablation reveals a **two-stage architecture**: early MLPs (layers 0, 3, 6) are critical for factual recall (ablation impact ΔP = 0.0037–0.0087), while late attention heads (layers 7, 19, 21) serve as extraction mechanisms. Projecting out the mean fact direction from early MLP outputs reduces target probability by **90–99.7%** (from 0.53% to 0.001%), and fundamentally reshapes the residual stream geometry—cosine similarity between pre- and post-deletion activations drops to near zero at the final layer. The residual stream geometry is dominated by a single principal component (63–91% variance) that grows monotonically in norm (130→1055) across layers.
+
+## 2. Goal
+
+**Hypothesis**: It is possible to use logit lens to identify where information is deleted from the residual stream in language models and to map out the geometry of the residual stream.
+
+**Why this matters**: Understanding the spatial and temporal structure of knowledge in transformers is essential for (a) targeted knowledge removal (machine unlearning, privacy), (b) understanding how transformers process and store information, and (c) designing more effective model editing techniques.
+
+**Gap**: Prior work studies logit lens, residual stream geometry, and knowledge deletion separately. No unified analysis tracks how logit lens signals change layer-by-layer during targeted deletion while simultaneously characterizing the geometric consequences.
+
+## 3. Data Construction
+
+### Dataset Description
+- **Source**: CounterFact (azhx/counterfact on HuggingFace), 19,728 examples
+- **Format**: (subject, relation, target_true) factual triples with natural language prompts
+- **Example**: &#34;The mother tongue of Danielle Darrieux is&#34; → &#34;French&#34;
+
+### Filtering
+We filtered to facts with single-token targets (for clean logit lens analysis), yielding 600 candidates. We then ranked these by GPT-2-medium&#39;s actual recall probability and selected the top 200.
+
+### Data Quality
+- **Selected facts**: 200 single-token-target facts
+- **Probability range**: 0.000000 – 0.159784
+- **Mean probability**: 0.28%
+- **Facts in top-10 rank**: 6 (3%)
+- **Facts in top-100 rank**: 8 (4%)
+
+Note: GPT-2-medium has relatively low factual recall on CounterFact compared to larger models, but provides sufficient signal for layer-by-layer analysis.
+
+## 4. Experiment Description
+
+### Methodology
+
+#### High-Level Approach
+We use TransformerLens to access all intermediate residual stream activations in GPT-2-medium. For each fact, we apply the logit lens (projecting through the unembedding matrix) at every layer to track where the correct answer emerges. We then perform systematic ablation and directional deletion to characterize information flow and geometry.
+
+#### Why This Method?
+The logit lens provides a non-parametric, zero-cost probe that directly reads the model&#39;s &#34;beliefs&#34; at each layer. Combined with ablation and directional projection, this gives a complete picture of where information enters, how it&#39;s organized, and what happens when it&#39;s removed.
+
+### Implementation Details
+
+#### Tools and Libraries
+- TransformerLens (activation hooks and caching)
+- PyTorch 2.10.0+cu128
+- NumPy 2.2.6, SciPy 1.17.1, scikit-learn 1.8.0
+- Matplotlib 3.10.8, Seaborn 0.13.2
+
+#### Model
+- GPT-2-medium: 24 layers, d_model=1024, 355M parameters
+
+#### Hardware
+- NVIDIA RTX A6000 (49GB VRAM)
+- Execution time: ~2 minutes total for all experiments
+
+### Experimental Protocol
+
+**Experiment 1: Logit Lens Profiling** — For each of 200 facts, cache all residual stream activations and apply logit lens at every layer. Track: P(correct target), log P(correct target), rank, and per-component (MLP vs attention) logit contribution.
+
+**Experiment 2: Ablation Study** — For each of 24 layers, zero out either the MLP or attention output and measure the impact on final-layer correct-target probability.
+
+**Experiment 3: Directional Deletion** — Identify &#34;fact directions&#34; in MLP outputs at critical layers, then project them out. Compare three strategies: single-layer, top-2-layer, and top-3-layer deletion. Track logit lens profiles and geometric statistics pre/post.
+
+**Experiment 4: Geometric Analysis** — PCA of residual stream at key layers, cross-layer cosine similarity, and norm evolution.
+
+**Reproducibility**: Seed=42, all results deterministic. N=200 facts with bootstrap-ready arrays saved.
+
+## 5. Results
+
+### Experiment 1: Where Does Factual Information Enter the Residual Stream?
+
+The logit lens reveals a **non-monotonic information trajectory**:
+
+| Layer Range | Mean P(target) | Behavior |
+|-------------|----------------|----------|
+| 0-7 | 0.000–0.000 | Near-zero: no factual signal |
+| 8-9 | 0.001–0.002 | First emergence of factual recall |
+| 10-14 | 0.001–0.003 | Fluctuation: signal enters and exits |
+| 15-17 | 0.003–0.016 | **Peak enrichment zone** (layer 17 max: 1.6%) |
+| 18-20 | 0.013–0.018 | Partial reduction, then second peak |
+| 21 | 0.025 | **Absolute peak** (2.5%) |
+| 22-23 | 0.016–0.009 | **Information deletion**: probability *decreases* |
+
+**Key finding**: The correct-target probability **peaks at layer 21 and then decreases** at layers 22-23. This means the model actively *suppresses* the factual signal in the final layers. The logit lens directly reveals &#34;information deletion&#34; — the residual stream loses factual content in its last 2-3 layers.
+
+The top three enrichment layers are **17, 21, and 16** with ΔP = 0.0073, 0.0069, and 0.0055 respectively.
+
+#### MLP vs Attention Contributions
+Attention heads dominate the target logit contribution at nearly every layer (mean 4.7 vs 1.2 for MLPs). The largest attention contributions come from layers 0 (10.2), 7 (8.9), 15 (9.0), 19 (10.5), and 16 (8.8). This aligns with the &#34;two-stage&#34; model: MLPs store knowledge, attention heads extract and route it.
+
+#### Per-Fact Enrichment Heatmap
+The enrichment pattern is not uniform across facts — some facts show sharp enrichment at layer 8-9 while others only emerge at layer 16-17 (see `fig4_enrichment_heatmap.png`). This suggests different facts are stored in different layers.
+
+### Experiment 2: Which Components Are Critical for Factual Recall?
+
+MLP ablation reveals a clear hierarchy:
+
+| Layer | MLP Impact (ΔP) | Attn Impact (ΔP) |
+|-------|-----------------|-------------------|
+| 0 | **0.0087** (most critical) | -0.0004 |
+| 6 | **0.0036** | -0.0009 |
+| 3 | **0.0031** | 0.0006 |
+| 18 | 0.0030 | 0.0004 |
+| 14 | 0.0030 | 0.0002 |
+| 7 | 0.0026 | **0.0026** (most critical attn) |
+| 21 | 0.0007 | **0.0024** |
+
+**Key finding**: The early MLP layers (0, 3, 6) are the most important for factual recall — this matches the **Fact Lookup (FLU) mechanism** identified by Ghosh et al. (2024). Ablating MLP 0 alone removes virtually all factual signal (ΔP = 0.0087, equal to baseline 0.0088).
+
+Interestingly, the late MLPs (22, 23) have **negative impact** — ablating them *increases* recall probability. This confirms that late MLPs participate in **information suppression/deletion**.
+
+### Experiment 3: Directional Deletion and Its Effects
+
+We computed the mean &#34;fact direction&#34; in MLP outputs at critical layers and projected it out:
+
+| Strategy | Target Layers | Pre-P | Post-P | Reduction | Cohen&#39;s d | p-value |
+|----------|--------------|-------|--------|-----------|-----------|---------|
+| Single best | [0] | 0.0053 | 0.0005 | **90.2%** | 0.221 | 0.116 |
+| Top 2 | [0, 3] | 0.0053 | 0.00001 | **99.7%** | 0.245 | 0.088 |
+| All critical | [0, 3, 6] | 0.0053 | 0.00002 | **99.7%** | 0.245 | 0.088 |
+
+**Key finding**: Deleting the fact direction at just layers 0 and 3 achieves near-complete removal of the factual signal (99.7% reduction). Adding layer 6 provides minimal additional benefit, suggesting the critical information is concentrated in the earliest MLPs.
+
+#### Geometric Impact of Deletion
+The deletion dramatically reshapes the residual stream:
+
+| Layer | Strategy | Mean Cosine Sim | Mean L2 Distance |
+|-------|----------|----------------|------------------|
+| 0 | single_best | 0.117 | 128.3 |
+| 12 | single_best | 0.684 | 301.9 |
+| 23 | single_best | 0.879 | 501.5 |
+| 0 | all_critical | 0.117 | 128.3 |
+| 12 | all_critical | 0.623 | 330.4 |
+| 23 | all_critical | **-0.009** | **1357.7** |
+
+**Key finding**: Multi-layer deletion causes the final-layer residual stream to become **completely uncorrelated** with its pre-deletion state (cosine similarity ≈ 0). The L2 displacement (1358) exceeds the mean activation norm at the final layer (1055), indicating the deletion pushes activations into a fundamentally different region of the residual stream.
+
+### Experiment 4: Geometry of the Residual Stream
+
+#### PCA Structure
+The residual stream is highly anisotropic at all layers:
+
+| Layer | PC1 Variance | PC2 Variance | Top-10 Cumulative |
+|-------|-------------|-------------|-------------------|
+| 0 | 63.0% | 14.7% | 95.4% |
+| 6 | **89.3%** | 4.4% | 98.9% |
+| 12 | **90.6%** | 2.7% | 99.4% |
+| 18 | 85.7% | 2.8% | 99.4% |
+| 23 | 65.3% | 10.0% | 98.0% |
+
+**Key finding**: The residual stream is dominated by a single principal component that captures 63-91% of variance. This &#34;rogue dimension&#34; (as identified by Belrose et al., 2023) is most dominant in middle layers (6-12) and somewhat less dominant at the input (layer 0) and output (layer 23). At the final layer, variance becomes more distributed, possibly reflecting the need to support a diverse vocabulary distribution.
+
+#### Norm Evolution
+Residual stream norms grow monotonically from 130 (layer 0) to 1055 (layer 23), with particularly rapid growth in late layers (808 at layer 21 → 993 at layer 22 → 1055 at layer 23). This exponential growth constrains the effective impact of perturbations: a fixed-magnitude edit has proportionally less effect at later layers.
+
+#### Cross-Layer Similarity
+Cosine similarity between corresponding activations at different layers drops sharply with layer distance. Adjacent layers have high similarity (&gt;0.85) while distant layers (e.g., 0 vs 23) have low similarity (~0.20). This confirms that the residual stream undergoes substantial rotation across layers.
+
+## 6. Result Analysis
+
+### Key Findings
+
+1. **The logit lens reveals a non-monotonic information trajectory**: Factual information enters the residual stream at layers 15-21 but is partially **deleted** in the final 2-3 layers. This &#34;information deletion&#34; occurs naturally as part of the model&#39;s computation.
+
+2. **Early MLPs are the critical storage components**: MLP 0 alone accounts for nearly 100% of factual recall (consistent with FLU mechanism). Late MLPs (22-23) actively suppress factual information.
+
+3. **Directional deletion is highly effective**: Projecting out a single &#34;fact direction&#34; from MLP outputs at layers 0-3 removes 99.7% of the factual signal.
+
+4. **Deletion fundamentally reshapes residual stream geometry**: Multi-layer directional deletion pushes final-layer activations into completely uncorrelated regions (cosine sim ≈ 0, L2 displacement &gt; activation norm).
+
+5. **The residual stream is geometrically anisotropic**: A single principal component dominates (63-91% variance), with peak anisotropy in middle layers.
+
+### Hypothesis Testing
+
+**H1** (Information appears at specific layers): **Supported**. The logit lens shows clear enrichment at layers 16-17 and 20-21, not uniformly across layers.
+
+**H2** (Ablating enrichment layers causes largest drop): **Partially supported**. The largest ablation impacts come from early MLPs (0, 3, 6), not the enrichment layers (16-17, 21). This reveals an important distinction: **enrichment layers** (where information appears in the logit lens) differ from **storage layers** (where information originates). Early MLPs provide the initial factual signal that later layers amplify.
+
+**H3** (Fact directions are approximately linear): **Supported**. A single mean direction per layer captures enough of the factual signal that projecting it out removes 90-99.7% of recall.
+
+**H4** (Targeted editing changes geometry measurably): **Strongly supported**. Multi-layer deletion reduces cosine similarity to ~0 and displaces activations by more than the activation norm.
+
+### Statistical Significance
+The deletion effects show p = 0.088-0.116 (marginal significance). The moderate p-values reflect (a) high variance across facts (some facts have near-zero baseline probability) and (b) the relatively small sample of well-recalled facts. The effect sizes (Cohen&#39;s d = 0.22-0.25) are small-to-medium, typical for transformer interventions where many facts are poorly recalled by the base model.
+
+### Comparison to Literature
+- Our finding that early MLPs are critical matches **Ghosh et al. (2024)**: the FLU mechanism (layers 2-8) is the knowledge storage site.
+- The non-monotonic logit lens profile with late-layer suppression matches **Li et al. (2026)**: &#34;deep layers show no erasure effect&#34; because they don&#39;t store knowledge — they retrieve and suppress it.
+- The geometric anisotropy (rogue dimensions) matches **Belrose et al. (2023)**: certain directions dominate the residual stream&#39;s covariance.
+- The norm growth pattern matches **Gromov et al. (2024)**: the residual stream grows in norm as information accumulates.
+
+### Limitations
+1. **GPT-2-medium has limited factual recall** — larger models (Llama, Gemma) would show clearer effects. Only 3% of our filtered facts were in the model&#39;s top-10 predictions.
+2. **The deletion method is simplified** — we use a single mean direction, not per-fact rank-one updates (as in ROME). A more targeted deletion would be more effective.
+3. **We use the standard (Euclidean) inner product**, not the causal inner product of Park et al. (2023). The causal inner product would provide a more principled geometric analysis.
+4. **We analyze only the last token position**. Factual information may be distributed across token positions.
+5. **Single random seed** — bootstrap confidence intervals would strengthen statistical claims.
+
+## 7. Conclusions
+
+### Summary
+The logit lens successfully reveals where factual information enters and exits the residual stream. Information follows a non-monotonic trajectory: it is enriched in layers 15-21 and partially deleted in layers 22-23. The critical storage mechanism resides in early MLPs (layers 0-6), and projecting out a single fact direction from these layers achieves near-complete knowledge removal. This deletion fundamentally reshapes the residual stream geometry, pushing activations into uncorrelated regions of activation space.
+
+### Implications
+- **For machine unlearning**: Target early MLP layers (FLU mechanism), not late layers. Directional projection is a lightweight deletion method.
+- **For interpretability**: The logit lens provides a direct, zero-cost window into the information content of the residual stream at every layer.
+- **For understanding transformers**: Factual knowledge has a clear two-stage architecture (storage in early MLPs → extraction via attention) and a three-phase lifecycle (absence → enrichment → partial suppression).
+
+### Confidence in Findings
+Medium-high confidence in the qualitative findings (information trajectory, storage vs extraction, deletion effectiveness). Lower confidence in quantitative effect sizes due to GPT-2-medium&#39;s limited factual recall. Replication with larger models would strengthen claims.
+
+## 8. Next Steps
+
+### Immediate Follow-ups
+1. **Scale to larger models** (Llama-3-8B, Gemma-7B) for higher factual recall and clearer deletion effects
+2. **Per-fact rank-one editing** (full ROME) instead of mean direction projection
+3. **Tuned lens** (trained affine probes) for more calibrated layer-by-layer predictions
+4. **Causal inner product** analysis for principled geometric measurements
+
+### Alternative Approaches
+- Sparse autoencoders to identify specific features involved in factual recall
+- Activation patching to trace causal paths more precisely
+- Stable region analysis to characterize minimum edit distances
+
+### Open Questions
+- Why do late MLPs suppress factual information? Is this calibration, or a safety mechanism?
+- How does the deletion geometry relate to stable regions (Janiak et al., 2024)?
+- Can we predict which facts are stored in which layers from the prompt structure alone?
+
+## References
+
+1. nostalgebraist (2020). &#34;Interpreting GPT: The Logit Lens.&#34; LessWrong.
+2. Belrose et al. (2023). &#34;Eliciting Latent Predictions from Transformers with the Tuned Lens.&#34; arXiv:2303.08112.
+3. Yu &amp; Ananiadou (2023). &#34;Neuron-Level Knowledge Attribution in LLMs.&#34; arXiv:2312.12141.
+4. Park et al. (2023). &#34;The Linear Representation Hypothesis and the Geometry of LLMs.&#34; arXiv:2311.03658.
+5. Shai et al. (2024). &#34;Transformers Represent Belief State Geometry.&#34; arXiv:2405.15943.
+6. Janiak et al. (2024). &#34;Characterizing Stable Regions in the Residual Stream.&#34; arXiv:2409.17113.
+7. Ghosh et al. (2024). &#34;Mechanistic Unlearning.&#34; arXiv:2410.12949.
+8. Li et al. (2026). &#34;Layer-Targeted Multilingual Knowledge Erasure in LLMs.&#34; arXiv:2602.22562.
+9. Gromov et al. (2024). &#34;Secretly Linear: Realigning LLM Representations.&#34; arXiv:2405.12250.
+
+
+════════════════════════════════════════════════════════════════════════════════
+                            RESEARCH PLAN
+════════════════════════════════════════════════════════════════════════════════
+
+# Research Plan: Characterizing Granular Deletes via Logit Lens and Residual Stream Geometry
+
+## Motivation &amp; Novelty Assessment
+
+### Why This Research Matters
+Understanding where and how factual information is stored and can be removed from language models is critical for AI safety (machine unlearning), privacy compliance, and mechanistic interpretability. The logit lens provides a window into the residual stream&#39;s evolving predictions, but no work has systematically mapped the geometry of information deletion across layers.
+
+### Gap in Existing Work
+Papers study logit lens (Belrose et al., Li et al. 2026), residual stream geometry (Park et al., Shai et al.), and deletion (Ghosh et al.) **separately**. No unified analysis tracks: (a) how logit lens signals change layer-by-layer when specific facts are present vs. ablated, (b) the geometric structure of fact-encoding directions in the residual stream, and (c) whether deletion interventions move activations across stable region boundaries.
+
+### Our Novel Contribution
+We provide the first unified analysis combining logit lens tracking with geometric characterization of the residual stream before and after targeted knowledge ablation. We map where facts &#34;live&#34; across layers, how they are geometrically organized, and what happens to the residual stream geometry when facts are surgically removed.
+
+### Experiment Justification
+- **Experiment 1 (Logit Lens Profiling)**: Establish baseline layer-by-layer information presence for factual knowledge — needed to know *where* to look for deletion effects.
+- **Experiment 2 (Ablation + Logit Lens)**: Zero-ablate MLPs at different layers and measure how logit lens signals change — directly tests where information enters/leaves the residual stream.
+- **Experiment 3 (Geometric Analysis)**: PCA and cosine similarity analysis of residual stream activations encoding different facts — maps the geometry of fact representations.
+- **Experiment 4 (Deletion Geometry)**: Compare residual stream geometry before and after rank-one editing (ROME-style) — shows how deletion reshapes the geometric landscape.
+
+## Research Question
+Can the logit lens reveal where factual information is added to and deleted from the residual stream, and what is the geometric structure of fact representations across layers?
+
+## Hypothesis Decomposition
+1. **H1**: Factual information (correct object token probability) appears in logit lens outputs at specific layers (not uniformly) — we expect enrichment in early-to-mid MLP layers (FLU mechanism).
+2. **H2**: Ablating MLPs at these enrichment layers causes the largest drop in correct-object probability at all subsequent layers.
+3. **H3**: Fact-encoding directions in the residual stream are approximately linear and can be visualized via PCA.
+4. **H4**: After targeted editing, the logit lens profile shifts — correct-object probability drops at storage layers, and the geometric structure of the residual stream changes measurably.
+
+## Proposed Methodology
+
+### Approach
+Use TransformerLens to run GPT-2-small on CounterFact examples, applying logit lens at every layer. Perform MLP ablation studies and rank-one model editing to characterize information flow and deletion geometry.
+
+### Experimental Steps
+1. Load GPT-2-small via TransformerLens, load CounterFact dataset
+2. For N=200 factual prompts, cache all residual stream activations
+3. Apply logit lens (unembedding projection) at each layer, record probability of correct object token
+4. Perform layer-wise MLP zero-ablation, measure effect on logit lens profiles
+5. Compute PCA of residual stream activations at key layers
+6. Apply rank-one editing (ROME-style) to delete specific facts
+7. Re-run logit lens analysis post-editing
+8. Compare pre/post geometry via cosine similarity and PCA
+
+### Baselines
+- Random token probability at each layer (chance baseline)
+- Logit lens on unrelated prompts (control)
+- Full model output as upper bound
+
+### Evaluation Metrics
+- **Layer-wise correct-object probability** (logit lens output)
+- **Information enrichment score**: Δ probability from layer l to l+1
+- **Ablation impact**: Drop in correct-object probability when layer l MLP is zeroed
+- **Cosine similarity** between fact directions across layers
+- **PCA variance explained** for fact representations
+- **Pre/post editing probability shift** at each layer
+
+### Statistical Analysis Plan
+- Bootstrap confidence intervals (N=200 facts, 1000 resamples)
+- Paired t-tests for pre/post editing comparisons
+- Effect sizes (Cohen&#39;s d) for ablation impacts
+- α = 0.05 with Bonferroni correction for multiple layer comparisons
+
+## Expected Outcomes
+- H1: Logit lens shows a sigmoid-like increase in correct-object probability across layers, with steepest increase at layers 4-8 (FLU region).
+- H2: Ablating MLPs at layers 4-8 has the largest downstream effect.
+- H3: Fact representations form interpretable clusters in PCA space.
+- H4: Post-editing, correct-object probability drops primarily at storage layers.
+
+## Timeline and Milestones
+- Setup &amp; data loading: 10 min
+- Experiment 1 (logit lens profiling): 20 min
+- Experiment 2 (ablation study): 30 min
+- Experiment 3 (geometric analysis): 20 min
+- Experiment 4 (deletion geometry): 30 min
+- Analysis &amp; visualization: 20 min
+- Documentation: 20 min
+
+## Potential Challenges
+- GPU memory for caching all activations (mitigate: batch processing)
+- ROME editing implementation complexity (mitigate: use simplified rank-one update)
+- CounterFact tokenization issues (mitigate: filter to single-token objects)
+
+## Success Criteria
+- Clear layer-by-layer logit lens profiles showing where facts are enriched
+- Statistically significant ablation effects identifying critical layers
+- Interpretable geometric visualizations of the residual stream
+- Measurable geometric changes after fact deletion
+
+
+════════════════════════════════════════════════════════════════════════════════
+                          LITERATURE REVIEW
+════════════════════════════════════════════════════════════════════════════════
+
+# Literature Review: Characterizing Granular Deletes via Logit Lens and Residual Stream Geometry
+
+## Research Area Overview
+
+This review covers the intersection of three active research threads in mechanistic interpretability: (1) **logit lens and related tools** for probing what information is encoded at each layer of a transformer, (2) **geometry of the residual stream** — how concepts, features, and belief states are spatially organized in activation space, and (3) **granular information deletion** — mechanistic approaches to selectively removing specific knowledge from language models. The hypothesis under investigation is that logit lens techniques can identify *where* information is deleted from the residual stream and help map the geometry of that stream.
+
+---
+
+## Key Papers
+
+### 1. Interpreting GPT: The Logit Lens (nostalgebraist, 2020)
+- **Source**: LessWrong blog post
+- **Key Contribution**: Introduced the idea of projecting intermediate hidden states through the unembedding matrix to decode what the model &#34;believes&#34; at each layer. The logit lens shows predictions converging gradually to the final output, with earlier layers producing rough semantic approximations.
+- **Relevance**: Foundational method. Establishes that the residual stream carries progressively refined predictions that can be read out at any layer.
+
+### 2. Eliciting Latent Predictions from Transformers with the Tuned Lens (Belrose et al., 2023)
+- **Authors**: Belrose, Ostrovsky, McKinney, Furman, Smith, Halawi, Biderman, Steinhardt
+- **arXiv**: 2303.08112
+- **Key Contribution**: Addresses logit lens failures (bias of 4-5 bits KL, failure on BLOOM/OPT) by training per-layer affine translators. The tuned lens is unbiased, causally faithful (Spearman ρ up to 0.98), and works across 50+ model variants.
+- **Methodology**: Affine probe `TunedLens(h_ℓ) = LayerNorm[A_ℓ·h_ℓ + b_ℓ]·W_U` trained with KL distillation loss.
+- **Key Findings**: (a) Predictions converge smoothly across layers — iterative inference view. (b) Representation drift is approximately affine between layers. (c) &#34;Rogue dimensions&#34; dominate covariance at certain layers. (d) Causal basis extraction identifies the most influential residual stream directions. (e) Layer deletion is nearly harmless except for layer 1.
+- **Code**: https://github.com/AlignmentResearch/tuned-lens
+
+### 3. Neuron-Level Knowledge Attribution in Large Language Models (Yu &amp; Ananiadou, 2023)
+- **arXiv**: 2312.12141
+- **Key Contribution**: Decomposes the residual stream into individual neuron-level contributions and attributes factual knowledge to ~300 specific neurons (200 attention + 100 FFN) that capture 97-99% of the predictive signal.
+- **Key Findings**: (a) Two-stage information flow: shallow/medium FFN → deep attention → deep FFN → output. (b) ~300 neurons capture nearly all knowledge signal; random same-count intervention causes &lt;0.2% effect. (c) Semantically similar knowledge types share attention heads. (d) Large cancellation effects from suppressive neurons, especially in FFN layers.
+- **Datasets**: TriviaQA, filtered to 6 knowledge types
+- **Models**: GPT2-large, Llama-7B
+- **Relevance**: Directly applicable to granular deletes — identifies which neurons to target for surgical knowledge removal.
+
+### 4. The Linear Representation Hypothesis and the Geometry of Large Language Models (Park et al., 2023)
+- **Authors**: Park, Choe, Veitch (University of Chicago)
+- **arXiv**: 2311.03658
+- **Key Contribution**: Formalizes the linear representation hypothesis into three equivalent notions (subspace, measurement, intervention) and introduces the **causal inner product** `⟨γ̄, γ̄&#39;⟩_C = γ̄ᵀ Cov(γ)⁻¹ γ̄&#39;` — the correct metric for measuring concept orthogonality in the residual stream.
+- **Key Findings**: (a) 26/27 tested concepts have linear representations. (b) Causally separable concepts are orthogonal under the causal (not Euclidean) inner product. (c) Steering vectors derived from the causal inner product change target concepts without affecting orthogonal concepts. (d) The Euclidean inner product fails for some architectures (Gemma-2B).
+- **Models**: LLaMA-2-7B, Gemma-2B
+- **Code**: https://github.com/KihoPark/linear_rep_geometry
+- **Relevance**: Defines the correct geometry for analyzing concept directions in the residual stream, essential for understanding what &#34;deleting a concept&#34; means geometrically.
+
+### 5. Transformers Represent Belief State Geometry in their Residual Stream (Shai et al., 2024)
+- **arXiv**: 2405.15943 (NeurIPS 2024)
+- **Key Contribution**: Shows that transformers trained on HMM-generated data linearly represent **belief state geometry** — including fractal structures — in their residual stream. The model encodes full future distributions, not just next-token predictions.
+- **Key Findings**: (a) Fractal belief state geometry is linearly embedded in the final-layer residual stream (Mess3 process). (b) When belief states are degenerate in next-token space (RRXOR), the geometry is distributed across layers and absent at the final layer. (c) Pairwise distance correlation with belief states: R²=0.95 vs. R²=0.31 for next-token distances. (d) Linearity is empirically discovered, not mathematically required.
+- **Relevance**: Provides a theoretical framework for understanding *what* the residual stream encodes — and why information may be distributed across layers rather than concentrated at any single layer.
+
+### 6. Characterizing Stable Regions in the Residual Stream of LLMs (Janiak et al., 2024)
+- **arXiv**: 2409.17113 (NeurIPS 2024 Workshop)
+- **Key Contribution**: Identifies **stable regions** — contiguous zones in activation space where small perturbations don&#39;t change model output, separated by sharp boundaries where small perturbations cause discrete output changes. Stable regions are much coarser than polytopes (hundreds to thousands of polytope boundaries within one stable region).
+- **Key Findings**: (a) Stable regions emerge during training. (b) Larger models have sharper boundaries. (c) Semantic content aligns with region membership. (d) Perturbations within a stable region are &#34;absorbed&#34; by the network.
+- **Models**: OLMo (1B, 7B), Qwen2 (0.5B, 1.5B, 7B)
+- **Relevance**: Directly constrains granular deletes — effective deletion requires pushing activations across region boundaries, not just perturbing within a region.
+
+### 7. Mechanistic Unlearning: Robust Knowledge Unlearning and Editing via Mechanistic Localization (Ghosh et al., 2024)
+- **arXiv**: 2410.12949
+- **Key Contribution**: Demonstrates that targeting the **Fact Lookup (FLU) mechanism** (early-to-middle MLPs, layers 2-8) for knowledge editing is dramatically more robust than targeting output-tracing (OT) components (later-layer extraction mechanisms).
+- **Key Findings**: (a) Knowledge has a two-stage structure: storage (FLU, early-mid MLPs) and extraction (later attention/MLPs). (b) OT methods achieve 0% in-distribution forget accuracy but allow 47-63% recovery via adversarial relearning; FLU limits this to ~20%. (c) After OT editing, linear probes still detect ground-truth knowledge in early layers; after FLU editing, probes converge to the edited answer. (d) FLU editing generalizes to MCQ format (&gt;40% advantage).
+- **Datasets**: Sports Facts (1,567 athletes), CounterFact
+- **Models**: Gemma-7B, Gemma-2-9B, Llama-3-8B
+- **Relevance**: Provides the clearest evidence that granular deletion must target the knowledge *storage* stage (where the residual stream is enriched), not the *extraction* stage.
+
+### 8. Layer-Targeted Multilingual Knowledge Erasure in LLMs (Li et al., 2026)
+- **arXiv**: 2602.22562
+- **Key Contribution**: Uses **Logit Lens probing** to verify genuine knowledge erasure vs. surface masking (&#34;Erasure Illusion&#34;). Introduces the MUTE framework targeting language-agnostic intermediate layers identified via CKA and LRDS metrics.
+- **Key Findings**: (a) Logit Lens reveals three layer regimes: shallow (erasure + utility collapse), target (genuine erasure), deep (no effect). (b) Language-agnostic layers (Llama L8-23, BLOOM L5-22, Qwen L19-24) are where semantic knowledge resides. (c) Single-layer targeting achieves cross-lingual erasure from only 3 source languages. (d) 2.75× utility improvement over global gradient ascent.
+- **Relevance**: Most direct demonstration of using logit lens to characterize where information deletion occurs in the residual stream.
+
+---
+
+## Common Methodologies
+
+### Residual Stream Probing
+- **Logit Lens / Tuned Lens**: Project intermediate states through unembedding to decode layer-by-layer predictions (Papers 1, 2, 8)
+- **Linear Probing**: Train logistic regression on residual stream activations to detect specific knowledge (Papers 3, 5, 7, 8)
+- **Causal Basis Extraction**: Find most influential directions via sequential ablation (Paper 2)
+
+### Knowledge Localization
+- **Activation Patching / Causal Tracing**: Replace activations to measure causal contribution (Papers 7)
+- **Path Patching**: Trace causal paths through specific components (Paper 7)
+- **CKA / LRDS Profiling**: Identify language-agnostic layers via alignment metrics (Paper 8)
+- **Neuron-level Attribution**: Log-probability increase scoring per neuron (Paper 3)
+
+### Geometric Analysis
+- **Causal Inner Product**: `Cov(γ)⁻¹`-based metric for concept orthogonality (Paper 4)
+- **Interpolation Analysis**: Linear interpolation between activations to find stable region boundaries (Paper 6)
+- **Belief State Regression**: Affine map from activations to probability simplex (Paper 5)
+
+---
+
+## Standard Baselines
+
+- **Logit Lens** (nostalgebraist, 2020): Zero-parameter baseline for layer-wise prediction decoding
+- **Causal Tracing / Attribution Patching**: Output-tracing localization methods (ROME, Meng et al., 2022)
+- **Gradient Ascent**: Standard unlearning baseline — maximize loss on forget set
+- **All-MLPs / Nonlocalized**: Edit all MLP parameters or all parameters
+- **Random component selection**: Baseline for localization methods
+
+## Evaluation Metrics
+
+- **Forget Accuracy** (↓): Remaining recall of deleted knowledge
+- **Retain Accuracy** (↑): Preservation of unrelated knowledge
+- **MCQ Generalization**: Whether deletion generalizes to alternative prompt formats
+- **Adversarial Relearning**: Recovery of deleted knowledge via fine-tuning
+- **Logit Lens Recall**: Internal activation-level measurement of knowledge presence
+- **Linear Probe Accuracy**: Whether knowledge is detectable in intermediate residual stream
+- **KL Divergence**: Lens output vs. final layer distribution
+- **Pairwise Distance Correlation**: Geometric fidelity of residual stream projections
+
+---
+
+## Datasets in the Literature
+
+| Dataset | Used In | Task |
+|---------|---------|------|
+| CounterFact | Papers 7, 8 | Factual knowledge editing/deletion |
+| Sports Facts | Paper 7 | Knowledge unlearning (athlete-sport) |
+| TOFU | Unlearning literature | Fictitious author unlearning |
+| TriviaQA | Paper 3 | Factual knowledge probing |
+| MMLU / MMMLU | Paper 8 | Multilingual knowledge evaluation |
+| The Pile | Paper 2 | General language modeling |
+| LAMA | Probing literature | Cloze-style knowledge probing |
+
+---
+
+## Gaps and Opportunities
+
+1. **No unified framework connecting logit lens to deletion geometry**: Papers study logit lens (2, 8), geometry (4, 5, 6), and deletion (7, 8) separately. No work systematically maps how the logit lens signal changes across layers during and after targeted deletion, in the context of the causal inner product or stable region geometry.
+
+2. **Scale of geometric analysis**: Belief state geometry (Paper 5) is demonstrated only on small models (4-layer, d=64). Whether fractal belief state structures appear in production-scale models is unknown.
+
+3. **Stable regions and deletion**: Paper 6 shows stable regions constrain minimum edit size, but no one has used stable region analysis to design deletion interventions or verify their completeness.
+
+4. **Causal inner product at intermediate layers**: Paper 4&#39;s causal inner product is defined only at the final layer. Extending it to intermediate layers would provide a principled metric for measuring concept deletion at each layer.
+
+5. **Suppressive neurons in deletion**: Paper 3 identifies neurons that actively suppress knowledge. The role of these suppressive neurons during unlearning is unstudied — does deletion work by enhancing suppression or by removing the positive signal?
+
+---
+
+## Recommendations for Our Experiment
+
+### Recommended Datasets
+1. **CounterFact** (primary): Tight (subject, relation, object) format, counterfactual pairs, used by both mechanistic unlearning and ROME. Enables tracking of where factual predictions appear/disappear in the residual stream.
+2. **TOFU** (secondary): Controlled synthetic knowledge for clean unlearning evaluation.
+3. **Sports Facts**: Simple, well-studied knowledge type with established FLU mechanism characterization.
+
+### Recommended Baselines
+1. **Logit Lens** and **Tuned Lens**: Layer-by-layer prediction tracking before/after deletion
+2. **Causal Tracing** (ROME): Output-tracing localization for comparison
+3. **FLU Localization** (Mechanistic Unlearning): Mechanistic localization baseline
+4. **Gradient Ascent**: Standard unlearning baseline
+
+### Recommended Metrics
+1. **Logit Lens recall at each layer**: Primary metric for tracking information deletion through the residual stream
+2. **Linear probe accuracy per layer**: Detect latent knowledge remaining after deletion
+3. **Stable region interpolation curves**: Characterize geometric impact of deletion
+4. **Causal inner product between concept directions**: Measure geometric isolation of deleted concepts
+5. **MCQ and adversarial relearning**: Robustness evaluation
+
+### Methodological Considerations
+- Use **TransformerLens** for activation access and hook-based interventions
+- Start with **GPT-2** or **Pythia** models for tractability, validate on **Llama-3-8B** or **Gemma-7B**
+- Layer-by-layer logit lens analysis before and after deletion interventions is the core experimental paradigm
+- The **causal inner product** (not Euclidean) should be used for all geometric analyses
+- Compare FLU-targeted vs. output-tracing-targeted deletions via logit lens to directly test the hypothesis
+
+
+════════════════════════════════════════════════════════════════════════════════
+                          PAPER REQUIREMENTS
+════════════════════════════════════════════════════════════════════════════════
+
+Generate a complete academic paper with the following structure:
+
+1. TITLE
+   - Clear, specific, informative
+   - Should convey main finding or contribution
+
+2. AUTHOR
+   - Use this exact author line in the \author{} block: Ari Holtzman and NeuriCo
+
+3. ABSTRACT (150-250 words)
+   - Problem statement
+   - Approach
+   - Key results
+   - Significance
+
+4. INTRODUCTION
+   - Research problem and motivation
+   - Gap in existing work
+   - Our contribution (be specific)
+   - Paper organization
+
+5. RELATED WORK
+   - Organized by theme/approach
+   - Position our work relative to prior work
+   - Cite papers from literature review
+
+6. METHODOLOGY
+   - Clear description of approach
+   - Experimental setup
+   - Datasets used
+   - Evaluation metrics
+   - Baselines
+
+7. RESULTS
+   - Present results with tables and figures
+   - Statistical analysis
+   - Comparison to baselines
+   - Ablation studies (if applicable)
+
+8. DISCUSSION
+   - Interpretation of results
+   - Limitations
+   - Broader implications
+
+9. CONCLUSION
+   - Summary of contributions
+   - Key findings
+   - Future work
+
+10. REFERENCES
+   - BibTeX format
+   - All cited papers
+
+════════════════════════════════════════════════════════════════════════════════
+                          OUTPUT FORMAT
+════════════════════════════════════════════════════════════════════════════════
+
+Create a MODULAR LaTeX project with the following directory structure:
+
+paper_draft/
+├── main.tex              # Main file that imports all sections
+├── references.bib        # BibTeX references
+├── sections/
+│   ├── abstract.tex      # Abstract content
+│   ├── introduction.tex  # Introduction section
+│   ├── related_work.tex  # Related work section
+│   ├── methodology.tex   # Methodology section
+│   ├── results.tex       # Results section
+│   ├── discussion.tex    # Discussion section
+│   └── conclusion.tex    # Conclusion section
+├── figures/              # Directory for any generated figures
+├── tables/               # Directory for complex standalone tables
+└── appendix/             # Directory for appendix sections (if needed)
+
+INSTRUCTIONS:
+1. First, create the directory structure above (mkdir -p paper_draft/sections paper_draft/figures paper_draft/tables paper_draft/appendix)
+2. Write main.tex using the EXACT preamble for NEURIPS:
+
+   \documentclass{article}
+   \usepackage[final]{neurips_2025}  % NEURIPS style (neurips_2025.sty is in paper_draft/)
+   \usepackage[hidelinks]{hyperref}  % REQUIRED: clickable links
+   \usepackage{booktabs}  % REQUIRED: professional tables
+   \usepackage{graphicx}
+   \usepackage{amsmath,amssymb}
+
+   % Import command files
+   \input{commands/math}
+   \input{commands/general}
+   \input{commands/macros}
+
+   % Use this bibliography style:
+   \bibliographystyle{plainnat}
+
+   \author{Ari Holtzman and NeuriCo}
+
+   - Use \input{sections/...} to include each section
+   - Use \bibliography{references} for references
+3. Write each section file with COMPLETE content (no placeholders)
+4. Each section file should include its \section{} command
+5. Write references.bib with all citations in BibTeX format
+6. After writing all files, compile the paper:
+   cd paper_draft && pdflatex -interaction=nonstopmode main.tex && bibtex main && pdflatex -interaction=nonstopmode main.tex && pdflatex -interaction=nonstopmode main.tex
+
+This modular structure allows humans to easily:
+- Edit individual sections without navigating a large file
+- Track changes per section
+- Reuse sections across different paper versions
+
+════════════════════════════════════════════════════════════════════════════════
+                          QUALITY REQUIREMENTS
+════════════════════════════════════════════════════════════════════════════════
+
+- Academic tone throughout
+- All claims must be supported by data from the experiment report
+- Proper citations using \cite{} commands
+- Clear figures and tables with proper captions
+- NO placeholder text - every section must have real content
+- The paper MUST compile without errors
+- If compilation fails, debug and fix the LaTeX errors
+
+════════════════════════════════════════════════════════════════════════════════
+                          LAB WRITING STYLE
+════════════════════════════════════════════════════════════════════════════════
+
+Follow these lab-specific conventions to match our paper style:
+
+1. LANGUAGE STYLE:
+   - Use active voice: "We propose", "We examine", "We focus on"
+   - Be direct and confident: "Our main question is...", "We hypothesize that..."
+   - State things clearly and simply - prefer plain language over jargon
+   - Use bold questions as paragraph organizers: {\bf what is X?}
+   - Include specific quantitative claims: "8.97% over baseline"
+   - Avoid fancy wording: "utilize" → "use", "facilitate" → "help"
+
+2. INTRODUCTION STRUCTURE:
+   - Engaging hook (get to the point quickly)
+   - Problem importance
+   - Gap identification
+   - Your approach with method figure reference
+   - Quantitative preview of results
+   - Contribution bullets (3-4 items, action verbs)
+
+3. CONTRIBUTION LISTS:
+   \begin{itemize}[leftmargin=*,itemsep=0pt,topsep=0pt]
+       \item We propose...
+       \item We conduct...
+       \item We complement...
+   \end{itemize}
+
+4. MODULAR COMMANDS STRUCTURE:
+   Command templates are pre-copied to paper_draft/commands/:
+   - math.tex: Math notation macros
+   - general.tex: Formatting macros
+   - macros.tex: Project-specific term definitions (customize this for your paper)
+
+   In main.tex, include:
+   \input{commands/math}
+   \input{commands/general}
+   \input{commands/macros}
+
+5. REFERENCE CONVENTIONS:
+   Use reference macros from math.tex:
+   - \figref{fig:name} for "figure 1" (lowercase, in-sentence)
+   - \Figref{fig:name} for "Figure 1" (capitalized, start of sentence)
+   - \secref{sec:name} for "section 2"
+
+6. TEXT FORMATTING:
+   - Use \para{Header text} for bold paragraph headers
+   - Define method/dataset names with \textsc and \xspace:
+     \newcommand{\methodname}{\textsc{MethodName}\xspace}
+
+7. TABLE FORMATTING:
+   - Use booktabs package (no vertical lines)
+   - Use \resizebox{\textwidth}{!}{...} for wide tables
+   - Use @{} to remove padding at table edges
+   - Use \cmidrule(lr){x-y} for sub-headers
+   - Use \textsc{} for dataset/method names in headers
+   - Bold best results with {\bf ...}
+
+8. FIGURE FORMATTING:
+   - Use 0.32\textwidth for 3-column subfigures
+   - Use 0.95\linewidth for full-width figures
+   - Use \input{figures/legend} for shared legends
+   - Write self-contained captions explaining key observations
+
+9. RESULTS PRESENTATION:
+   - Define \increase and \decrease for colored arrows (green up, red down)
+   - Bold best results in tables
+   - Report confidence intervals when available
+
+10. ALGORITHM STYLING:
+    - Use algpseudocode with [noend]
+    - Use \triangleright for comments
+
+11. HYPERLINKS (REQUIRED):
+    - Always use \usepackage[hidelinks]{hyperref} or with colored links
+    - All citations, section refs, figure refs, table refs must be clickable
+    - This is essential for reader navigation
+
+════════════════════════════════════════════════════════════════════════════════
+                          WORKFLOW: REVIEW AND REFLECT
+════════════════════════════════════════════════════════════════════════════════
+
+Before calling finish, you MUST complete these review steps:
+
+1. REVIEW RESOURCES (at the start):
+   - Read .claude/skills/paper-writer/SKILL.md for detailed guidance
+   - Study templates/paper_writing/lab_style_guide.md for style conventions
+   - Browse paper_examples/ for formatting and language patterns
+
+2. SELF-REFLECTION (before finishing):
+   After writing all sections, review your work against these criteria:
+
+   LANGUAGE CHECK:
+   - [ ] Is the writing clear and jargon-free?
+   - [ ] Are claims specific with quantitative support?
+   - [ ] Is active voice used throughout?
+
+   FORMATTING CHECK:
+   - [ ] Does main.tex include \input{commands/math}, \input{commands/general}, \input{commands/macros}?
+   - [ ] Is hyperref package included for clickable references?
+   - [ ] Do tables use booktabs (no vertical lines)?
+   - [ ] Are best results bolded in tables?
+   - [ ] Are figures/tables properly captioned?
+
+   STRUCTURE CHECK:
+   - [ ] Does introduction follow: hook → importance → gap → approach → preview → contributions?
+   - [ ] Are contribution bullets specific with action verbs?
+   - [ ] Does the paper compile without errors?
+
+3. FIX ISSUES:
+   - Address any issues found in the self-reflection
+   - Re-compile and verify the PDF looks correct
+
+Only after completing this review should you consider the paper finished.

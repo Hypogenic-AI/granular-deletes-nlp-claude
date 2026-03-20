@@ -1,0 +1,15 @@
+PDF: papers/2602.22562_wang2026_layer_targeted_erasure.pdf
+Total pages: 28
+Pages per chunk: 3
+
+Chunks:
+  2602.22562_wang2026_layer_targeted_erasure_chunk_001.pdf: pages 1-3
+  2602.22562_wang2026_layer_targeted_erasure_chunk_002.pdf: pages 4-6
+  2602.22562_wang2026_layer_targeted_erasure_chunk_003.pdf: pages 7-9
+  2602.22562_wang2026_layer_targeted_erasure_chunk_004.pdf: pages 10-12
+  2602.22562_wang2026_layer_targeted_erasure_chunk_005.pdf: pages 13-15
+  2602.22562_wang2026_layer_targeted_erasure_chunk_006.pdf: pages 16-18
+  2602.22562_wang2026_layer_targeted_erasure_chunk_007.pdf: pages 19-21
+  2602.22562_wang2026_layer_targeted_erasure_chunk_008.pdf: pages 22-24
+  2602.22562_wang2026_layer_targeted_erasure_chunk_009.pdf: pages 25-27
+  2602.22562_wang2026_layer_targeted_erasure_chunk_010.pdf: page 28
