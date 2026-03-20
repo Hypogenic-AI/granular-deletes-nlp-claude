@@ -1,0 +1,22 @@
+idea:
+  title: Characterizing granular deletes?
+  domain: nlp
+  hypothesis: 'It is possible to use logit lens to identify where information is deleted
+    from the residual stream in language models and to map out the geometry of the
+    residual stream.
+
+    '
+  background:
+    description: 'Can we use logit lens to see where info is deleted from the residual
+      stream and try to map out the geometry of the residual stream?
+
+      '
+  metadata:
+    author: Ari Holtzman
+    source: IdeaHub
+    source_url: https://hypogenic.ai/ideahub/idea/3iiKHAwnTsVPoLvXTdk9
+    idea_id: characterizing_granular_delete_20260320_193853_486fc565
+    created_at: '2026-03-20T19:38:53.186757'
+    status: submitted
+    github_repo_name: granular-deletes-nlp-claude
+    github_repo_url: https://github.com/Hypogenic-AI/granular-deletes-nlp-claude
